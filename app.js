@@ -58,9 +58,27 @@ let ORDERS = [
   mk(135, 'approved', 'Gupta Petroleum', 110, ITEMS[0], D(21, 9, 0), 'arjun', { zone: 'North Central Retail', sub: D(21, 9, 10), appr: 'priya', apprAt: D(22, 10, 0), hist: [H('Approved', 'priya', D(22, 10, 0), 'Approved.'), H('Submitted for approval', 'arjun', D(21, 9, 10)), H('Draft created', 'arjun', D(21, 9, 0))] }),
 ];
 let nextRef = 149;
+USERS.forEach(u => { u.pw = u.org === 'rohan' ? 'Rohan@2026' : 'Hpcl@2026'; });
+USERS.find(u => u.id === 'rahul').un = 'rahul';
+USERS.find(u => u.id === 'amit').un = 'amit';
+
+/* ---------- persistence (browser localStorage) ---------- */
+const KEY = 'rohan-energy-portal-v1';
+const ISO = /^\d{4}-\d{2}-\d{2}T/;
+const revive = (k, v) => (typeof v === 'string' && ISO.test(v)) ? new Date(v) : v;
+const SEED = JSON.stringify({ users: USERS, orders: ORDERS, nextRef: nextRef });
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY) || 'null', revive);
+    if (d) { USERS.length = 0; d.users.forEach(u => USERS.push(u)); ORDERS = d.orders; nextRef = d.nextRef; S.user = d.session || null; }
+  } catch (e) {}
+}
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify({ users: USERS, orders: ORDERS, nextRef: nextRef, session: S.user })); } catch (e) {}
+}
 
 const S = {
-  user: 'rahul',
+  user: null,
   form: null,
   f: { my: { st: '', q: '' }, all: { zone: '', st: '', q: '' }, pend: { off: '', ro: '' }, adm: { org: '', zone: '' }, raw: { ro: '' } },
   review: null,
@@ -98,7 +116,7 @@ function visible(o) {
   if (u.id === 'admin') return true;
   return o.zone === u.zone;
 }
-var adminUser = { id: 'admin', name: 'superadmin', org: 'admin', zone: 'All zones' };
+var adminUser = { pw: 'Admin@2026', un: 'superadmin', id: 'admin', name: 'superadmin', org: 'admin', zone: 'All zones' };
 const cur2 = cur;
 
 function toast(msg) {
@@ -121,6 +139,8 @@ function tabsFor(u) {
 
 /* ---------- shell ---------- */
 function render() {
+  persist();
+  if (!S.user || !U(S.user)) { S.user = null; $('#app').innerHTML = vLogin(); return; }
   const u = cur2();
   let r = route();
   const tabs = tabsFor(u);
@@ -135,12 +155,20 @@ function render() {
     '<div class="topbar"><div class="tb-left"><img class="logo-h" src="logo-hpcl.svg" alt="HPCL"><div class="tb-sep"></div><img class="logo-m" src="logo-mark.svg" alt="Rohan Energy"><div class="tb-sep"></div>' +
     '<div><div class="tb-main">Rohan Energy–HPCL Cluster 2 Reporting Portal</div><div class="tb-sub">' + esc(u.zone) + '</div></div></div>' +
     '<div class="tb-right"><span class="role-chip ' + chip + '">' + chipTxt + '</span>' +
-    '<span class="tb-user">Demo user:<select onchange="A.as(this.value)">' +
-    [['rahul', 'Rahul Verma (Rohan)'], ['amit', 'Amit Sharma (HPCL)'], ['admin', 'superadmin']].map(x => '<option value="' + x[0] + '"' + (x[0] === S.user ? ' selected' : '') + '>' + x[1] + '</option>').join('') +
-    '</select></span><button class="btn-sm" onclick="A.as(\'rahul\')">Sign out</button></div></div>' +
+    '<span class="tb-user">Logged in as <strong>' + esc(u.name) + '</strong></span><button class="btn-sm" onclick="A.logout()">Sign out</button></div></div>' +
     '<div class="tabs">' + tabs.map(t => '<a class="tab' + (t[0] === activeTab ? ' on' : '') + '" href="#/' + t[0] + '">' + t[1] + (t[2] ? '<span class="badge-n">' + t[2] + '</span>' : '') + '</a>').join('') + '</div>' +
     '<div class="content">' + body + '</div>';
   bindNew();
+}
+
+/* ---------- Login ---------- */
+function vLogin() {
+  return '<div class="login"><form class="login-card" onsubmit="return A.login(event)"><div class="login-logos"><img class="logo-h" src="logo-hpcl.svg" alt="HPCL"><div class="logo-sep2"></div><img class="logo-m" src="logo-mark.svg" alt="Rohan Energy"></div>' +
+    '<div class="login-title"><h1>Rohan Energy–HPCL Cluster 2 Reporting Portal</h1><p>Secondary Sales &amp; Order Approvals — DEF Cluster 2</p></div><h2>Sign in</h2>' +
+    '<div class="field"><label>Username</label><input class="inp" id="lg-un" autocomplete="username" autofocus></div>' +
+    '<div class="field"><label>Password</label><input class="inp" id="lg-pw" type="password" autocomplete="current-password"></div>' +
+    '<div class="login-err" id="lg-err" style="display:none"></div><button class="btn-login" type="submit">Sign In →</button>' +
+    '<div class="login-foot"><a href="#" onclick="A.resetDemo();return false">Reset demo data</a></div></form></div>';
 }
 
 /* ---------- Dashboard / Raw ---------- */
@@ -336,7 +364,21 @@ function tblRefresh() {
 function stamp() { return new Date(2026, 9, 29, new Date().getHours(), new Date().getMinutes()); }
 
 const A = {
-  as(id) { S.user = id; S.form = null; S.review = null; modal(); go('dashboard'); render(); },
+  login(e) {
+    e.preventDefault();
+    const un = $('#lg-un').value.trim().toLowerCase(), pw = $('#lg-pw').value;
+    const u = USERS.concat([adminUser]).find(x => x.un.toLowerCase() === un && x.pw === pw);
+    const err = $('#lg-err');
+    if (!u) { err.textContent = 'Invalid username or password.'; err.style.display = 'block'; return false; }
+    if (u.active === false) { err.textContent = 'This account is disabled. Contact the administrator.'; err.style.display = 'block'; return false; }
+    S.user = u.id; S.form = null; S.review = null; location.hash = '#/dashboard'; render(); return false;
+  },
+  logout() { S.user = null; S.form = null; S.review = null; modal(); render(); },
+  resetDemo() {
+    if (!confirm('Reset all demo data (orders and users) to the starting state?')) return;
+    const d = JSON.parse(SEED, revive); USERS.length = 0; d.users.forEach(u => USERS.push(u)); ORDERS = d.orders; nextRef = d.nextRef;
+    S.user = null; S.form = null; try { localStorage.removeItem(KEY); } catch (e) {} render(); toast('Demo data reset');
+  },
   f(view, key, v) { S.f[view][key] = v; if (route()[0] === 'raw') render(); else tblRefresh(); },
   fq(view, v) { S.f[view].q = v; tblRefresh(); },
   reset(view) { S.f[view] = { st: '', q: '' }; render(); },
@@ -397,12 +439,14 @@ const A = {
     const g = id => $('#' + id).value.trim();
     if (!g('nu-name') || !g('nu-un')) { toast('Full name and username are required'); return; }
     if (g('nu-pw').length < 8) { toast('Temporary password must be at least 8 characters'); return; }
-    USERS.push({ id: 'u' + (++S.newUsers), name: g('nu-name'), un: g('nu-un'), org: g('nu-org'), role: g('nu-role'), zone: g('nu-zone'), active: true, last: 'Never' });
+    if (USERS.some(x => x.un.toLowerCase() === g('nu-un').toLowerCase())) { toast('Username already exists'); return; }
+    USERS.push({ id: 'u' + Date.now(), pw: g('nu-pw'), name: g('nu-name'), un: g('nu-un'), org: g('nu-org'), role: g('nu-role'), zone: g('nu-zone'), active: true, last: 'Never' });
     toast('User created'); render();
   },
   toggle(id) { const u = U(id); u.active = !u.active; tblRefresh(); }
 };
 window.A = A; window.go = go;
 window.addEventListener('hashchange', () => { S.review = null; modal(); render(); });
+load();
 render();
 })();
