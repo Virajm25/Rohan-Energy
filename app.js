@@ -78,7 +78,7 @@ function persist() {
 }
 
 const S = {
-  user: null,
+  user: null, seg: 'rohan',
   form: null,
   f: { my: { st: '', q: '' }, all: { zone: '', st: '', q: '' }, pend: { off: '', ro: '' }, adm: { org: '', zone: '' }, raw: { ro: '' } },
   review: null,
@@ -165,9 +165,10 @@ function render() {
 function vLogin() {
   return '<div class="login"><form class="login-card" onsubmit="return A.login(event)"><div class="login-logos"><img class="logo-h" src="logo-hpcl.svg" alt="HPCL"><div class="logo-sep2"></div><img class="logo-m" src="logo-mark.svg" alt="Rohan Energy"></div>' +
     '<div class="login-title"><h1>Rohan Energy–HPCL Cluster 2 Reporting Portal</h1><p>Secondary Sales &amp; Order Approvals — DEF Cluster 2</p></div><h2>Sign in</h2>' +
+    '<div class="seg"><div id="seg-rohan" class="on" onclick="A.seg(&quot;rohan&quot;)">Rohan Energy</div><div id="seg-hpcl" onclick="A.seg(&quot;hpcl&quot;)">HPCL</div></div>' +
     '<div class="field"><label>Username</label><input class="inp" id="lg-un" autocomplete="username" autofocus></div>' +
     '<div class="field"><label>Password</label><input class="inp" id="lg-pw" type="password" autocomplete="current-password"></div>' +
-    '<div class="login-err" id="lg-err" style="display:none"></div><button class="btn-login" type="submit">Sign In →</button>' +
+    '<button class="btn-login" type="submit">Sign In →</button><div class="login-err" id="lg-err" style="display:none"></div>' +
     '<div class="login-foot"><a href="#" onclick="A.resetDemo();return false">Reset demo data</a></div></form></div>';
 }
 
@@ -367,13 +368,15 @@ const A = {
   login(e) {
     e.preventDefault();
     const un = $('#lg-un').value.trim().toLowerCase(), pw = $('#lg-pw').value;
-    const u = USERS.concat([adminUser]).find(x => x.un.toLowerCase() === un && x.pw === pw);
+    const u = USERS.concat([adminUser]).find(x => x.un.toLowerCase() === un && x.pw === pw && (x.org === 'admin' || x.org === S.seg));
     const err = $('#lg-err');
-    if (!u) { err.textContent = 'Invalid username or password.'; err.style.display = 'block'; return false; }
-    if (u.active === false) { err.textContent = 'This account is disabled. Contact the administrator.'; err.style.display = 'block'; return false; }
+    const fail = m => { err.textContent = m; err.style.display = 'block'; $('#lg-un').classList.add('err'); $('#lg-pw').classList.add('err'); return false; };
+    if (!u) return fail('Invalid username or password. Please try again.');
+    if (u.active === false) return fail('This account is disabled. Contact the administrator.');
     S.user = u.id; S.form = null; S.review = null; location.hash = '#/dashboard'; render(); return false;
   },
-  logout() { S.user = null; S.form = null; S.review = null; modal(); render(); },
+  seg(o) { S.seg = o; $('#seg-rohan').className = o === 'rohan' ? 'on' : ''; $('#seg-hpcl').className = o === 'hpcl' ? 'on' : ''; },
+  logout() { S.seg = 'rohan'; S.user = null; S.form = null; S.review = null; modal(); render(); },
   resetDemo() {
     if (!confirm('Reset all demo data (orders and users) to the starting state?')) return;
     const d = JSON.parse(SEED, revive); USERS.length = 0; d.users.forEach(u => USERS.push(u)); ORDERS = d.orders; nextRef = d.nextRef;
